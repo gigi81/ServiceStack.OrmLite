@@ -60,7 +60,7 @@ namespace ServiceStack.OrmLite
 
             var objProperties = modelType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
-            var hasIdField = objProperties.Any(p => p.Name == OrmLiteConfig.IdField);
+            var hasPrimaryKey = CheckPrimaryKey(objProperties);
 
             for (var i = 0; i < objProperties.Length; i++)
             {
@@ -70,15 +70,12 @@ namespace ServiceStack.OrmLite
                 var pkAttribute = propertyInfo.FirstAttribute<PrimaryKeyAttribute>();
                 var decimalAttribute = propertyInfo.FirstAttribute<DecimalLengthAttribute>();
                 var belongToAttribute = propertyInfo.FirstAttribute<BelongToAttribute>();
-                var isFirst = i++ == 0;
 
-                var isPrimaryKey = propertyInfo.Name == OrmLiteConfig.IdField || (!hasIdField && isFirst) || pkAttribute != null;
+                var isPrimaryKey = propertyInfo.Name == OrmLiteConfig.IdField || pkAttribute != null || (!hasPrimaryKey && (i == 0 /* first field */));
 
                 var isNullableType = IsNullableType(propertyInfo.PropertyType);
 
-                var isNullable = (!propertyInfo.PropertyType.IsValueType
-                                  && propertyInfo.FirstAttribute<RequiredAttribute>() == null)
-                                 || isNullableType;
+                var isNullable = isNullableType || (!propertyInfo.PropertyType.IsValueType && propertyInfo.FirstAttribute<RequiredAttribute>() == null);
 
                 var propertyType = isNullableType
                                        ? Nullable.GetUnderlyingType(propertyInfo.PropertyType)
@@ -102,24 +99,24 @@ namespace ServiceStack.OrmLite
 
                 var fieldDefinition = new FieldDefinition
                 {
-                    Name = propertyInfo.Name,
-                    Alias = aliasAttr != null ? aliasAttr.Name : null,
-                    FieldType = propertyType,
-                    PropertyInfo = propertyInfo,
-                    IsNullable = isNullable,
-                    IsPrimaryKey = isPrimaryKey,
-                    AutoIncrement = isPrimaryKey && propertyInfo.FirstAttribute<AutoIncrementAttribute>() != null,
-                    IsIndexed = isIndex,
-                    IsUnique = isUnique,
-                    FieldLength = stringLengthAttr != null ? stringLengthAttr.MaximumLength : (int?)null,
-                    DefaultValue = defaultValueAttr != null ? defaultValueAttr.DefaultValue : null,
-                    ForeignKey = GetForeignKeyConstraint(foreignKeyAttr, referencesAttr),
-                    GetValueFn = propertyInfo.GetPropertyGetterFn(),
-                    SetValueFn = propertyInfo.GetPropertySetterFn(),
-                    Sequence = sequenceAttr != null ? sequenceAttr.Name : string.Empty,
-                    IsComputed = computeAttr != null,
+                    Name              = propertyInfo.Name,
+                    Alias             = aliasAttr != null ? aliasAttr.Name : null,
+                    FieldType         = propertyType,
+                    PropertyInfo      = propertyInfo,
+                    IsNullable        = isNullable,
+                    IsPrimaryKey      = isPrimaryKey,
+                    AutoIncrement     = isPrimaryKey && propertyInfo.FirstAttribute<AutoIncrementAttribute>() != null,
+                    IsIndexed         = isIndex,
+                    IsUnique          = isUnique,
+                    FieldLength       = stringLengthAttr != null ? stringLengthAttr.MaximumLength : (int?)null,
+                    DefaultValue      = defaultValueAttr != null ? defaultValueAttr.DefaultValue : null,
+                    ForeignKey        = GetForeignKeyConstraint(foreignKeyAttr, referencesAttr),
+                    GetValueFn        = propertyInfo.GetPropertyGetterFn(),
+                    SetValueFn        = propertyInfo.GetPropertySetterFn(),
+                    Sequence          = sequenceAttr != null ? sequenceAttr.Name : string.Empty,
+                    IsComputed        = computeAttr != null,
                     ComputeExpression = computeAttr != null ? computeAttr.Expression : string.Empty,
-                    Scale = decimalAttribute != null ? decimalAttribute.Scale : (int?)null,
+                    Scale             = decimalAttribute != null ? decimalAttribute.Scale : (int?)null,
                     BelongToModelName = belongToAttribute != null ? belongToAttribute.BelongToTableType.GetModelDefinition().ModelName : null,
                 };
 
@@ -132,6 +129,12 @@ namespace ServiceStack.OrmLite
             modelDef.SqlSelectAllFromTable = "SELECT {0} FROM {1} ".Fmt(OrmLiteConfig.DialectProvider.GetColumnNames(modelDef),
                                                                         OrmLiteConfig.DialectProvider.GetQuotedTableName(modelDef));
             return modelDef;
+        }
+
+        private static bool CheckPrimaryKey(PropertyInfo[] objProperties)
+        {
+            return objProperties.Any(p => p.Name == OrmLiteConfig.IdField) ||
+                   objProperties.Any(p => p.FirstAttribute<PrimaryKeyAttribute>() != null);
         }
 
         private static ForeignKeyConstraint GetForeignKeyConstraint(ForeignKeyAttribute foreignKeyAttr, ReferencesAttribute referencesAttr)
